@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camera Test</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 20px; background: #111; color: #eee; }
+  h1 { font-size: 18px; }
+  .log {
+    background: #000; padding: 12px; border-radius: 8px;
+    font-family: monospace; font-size: 12px;
+    min-height: 200px; max-height: 300px; overflow-y: auto;
+    margin: 10px 0; border: 1px solid #333;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  button, label {
+    display: inline-block;
+    background: #d97706; color: white;
+    padding: 14px 24px; border-radius: 8px;
+    font-size: 16px; border: none; margin: 4px;
+    cursor: pointer;
+  }
+  input[type="file"] { display: none; }
+  img { max-width: 100%; border: 2px solid #444; margin-top: 10px; }
+  .ok { color: #10b981; }
+  .err { color: #ef4444; }
+  .info { color: #fbbf24; }
+</style>
+</head>
+<body>
+
+<h1>Camera Test — iPad Safari診断</h1>
+<p>各ボタンを試して、ログを見てください。</p>
+
+<div>
+  <label for="cam1">📷 Test1: 撮影 (capture=environment)</label>
+  <input type="file" id="cam1" accept="image/*" capture="environment">
+
+  <label for="cam2">📷 Test2: 撮影 (capture属性のみ)</label>
+  <input type="file" id="cam2" accept="image/*" capture>
+
+  <label for="cam3">📷 Test3: image/jpegのみ</label>
+  <input type="file" id="cam3" accept="image/jpeg" capture="environment">
+
+  <label for="gal">🖼 Test4: ギャラリー</label>
+  <input type="file" id="gal" accept="image/*">
+
+  <button id="clear">🗑 ログクリア</button>
+</div>
+
+<div class="log" id="log">[起動] ページ読み込み完了</div>
+
+<div id="preview"></div>
+
+<script>
+const log = document.getElementById('log');
+const preview = document.getElementById('preview');
+
+function l(msg, cls) {
+  const t = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.className = cls || '';
+  line.textContent = `[${t}] ${msg}`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ページのライフサイクルを観察
+window.addEventListener('load', () => l('window.load 発火', 'info'));
+window.addEventListener('pageshow', (e) => l(`pageshow (persisted=${e.persisted})`, 'info'));
+window.addEventListener('pagehide', () => l('pagehide', 'info'));
+window.addEventListener('visibilitychange', () => l(`visibility: ${document.visibilityState}`, 'info'));
+window.addEventListener('focus', () => l('window.focus', 'info'));
+window.addEventListener('blur', () => l('window.blur', 'info'));
+
+// 各input要素に共通ハンドラ
+function setup(id, label) {
+  const el = document.getElementById(id);
+  l(`${label} (${id}) リスナー登録`);
+  el.addEventListener('change', (e) => {
+    l(`✓ ${label} change発火!`, 'ok');
+    l(`  files.length = ${e.target.files.length}`);
+    if (e.target.files.length === 0) {
+      l(`  ⚠ files空. 撮影キャンセル?`, 'err');
+      return;
+    }
+    const f = e.target.files[0];
+    l(`  ファイル名: ${f.name}`);
+    l(`  type: ${f.type}`);
+    l(`  size: ${(f.size/1024/1024).toFixed(2)}MB`);
+    l(`  lastModified: ${new Date(f.lastModified).toISOString()}`);
+
+    // 画像表示してみる
+    try {
+      const url = URL.createObjectURL(f);
+      const img = document.createElement('img');
+      img.onload = () => {
+        l(`  画像decode OK: ${img.naturalWidth}×${img.naturalHeight}`, 'ok');
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = () => {
+        l(`  画像decode失敗 (HEIC?)`, 'err');
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+      preview.innerHTML = '';
+      preview.appendChild(img);
+    } catch (err) {
+      l(`  プレビュー失敗: ${err.message}`, 'err');
+    }
+  });
+  el.addEventListener('click', () => l(`${label} クリック`));
+}
+
+setup('cam1', 'Test1');
+setup('cam2', 'Test2');
+setup('cam3', 'Test3');
+setup('gal',  'Test4');
+
+document.getElementById('clear').addEventListener('click', () => {
+  log.innerHTML = '';
+  preview.innerHTML = '';
+  l('クリア');
+});
+
+l(`UA: ${navigator.userAgent.substring(0,80)}`);
+l(`iOS判定: ${/iP(hone|ad|od)/.test(navigator.userAgent) ? 'iOS' : 'その他'}`);
+l('準備完了. ボタンを押してください.');
+</script>
+
+</body>
+</html>

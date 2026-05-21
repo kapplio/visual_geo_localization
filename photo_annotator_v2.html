@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Photo Annotator v2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%; overflow: hidden;
+    background: #0a0a0a; color: #e8e8e8;
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
+    user-select: none; -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+
+  /* Top bar */
+  #topbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #2a2a2a;
+    flex-shrink: 0;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  }
+  #topbar button, #topbar label {
+    background: #2a2a2a; color: #e8e8e8;
+    border: none; padding: 10px 14px; border-radius: 8px;
+    font-size: 14px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    min-height: 40px;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  #topbar button:active, #topbar label:active { background: #3a3a3a; }
+  #topbar button.primary { background: #d97706; }
+  #topbar button:disabled { opacity: 0.4; }
+  #topbar input[type="file"] { display: none; }
+  #photo-info {
+    flex: 1; font-size: 12px; color: #888;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* Sensor status bar */
+  #sensor-bar {
+    display: flex; gap: 14px;
+    padding: 6px 12px;
+    background: #161616;
+    border-bottom: 1px solid #2a2a2a;
+    font-size: 11px; color: #888;
+    flex-wrap: wrap;
+    font-variant-numeric: tabular-nums;
+  }
+  #sensor-bar .sensor {
+    display: flex; align-items: center; gap: 4px;
+  }
+  #sensor-bar .sensor .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #444;
+    flex-shrink: 0;
+  }
+  #sensor-bar .sensor.live .dot { background: #10b981; box-shadow: 0 0 6px #10b981; }
+  #sensor-bar .sensor.error .dot { background: #ef4444; }
+  #sensor-bar .label { color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+  #sensor-bar .value { color: #e8e8e8; font-weight: 500; }
+
+  /* Permission overlay */
+  #perm-overlay {
+    position: fixed; inset: 0;
+    background: rgba(10,10,10,0.95);
+    z-index: 100;
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 30px; text-align: center;
+    backdrop-filter: blur(8px);
+  }
+  #perm-overlay.active { display: flex; }
+  #perm-overlay h1 { font-size: 20px; margin-bottom: 12px; color: #fbbf24; }
+  #perm-overlay p { font-size: 14px; line-height: 1.6; color: #aaa; margin-bottom: 8px; max-width: 360px; }
+  #perm-overlay ul { font-size: 13px; color: #888; margin: 12px 0 24px; line-height: 1.8; list-style: none; }
+  #perm-overlay ul li::before { content: "・"; color: #d97706; margin-right: 4px; }
+  #perm-overlay button {
+    background: #d97706; color: #fff; border: none;
+    padding: 14px 30px; border-radius: 10px;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    min-height: 48px;
+  }
+  #perm-overlay .skip {
+    background: transparent; color: #666; margin-top: 10px;
+    font-size: 13px;
+  }
+
+  /* Session bar */
+  .session-bar {
+    display: flex; gap: 8px; padding: 8px 12px;
+    background: #161616; border-bottom: 1px solid #2a2a2a;
+    font-size: 12px; align-items: center; flex-wrap: wrap;
+  }
+  .session-bar input {
+    flex: 1; min-width: 100px;
+    background: #0a0a0a; color: #e8e8e8;
+    border: 1px solid #2a2a2a; border-radius: 6px;
+    padding: 6px 10px; font-size: 13px;
+    font-family: inherit;
+  }
+  .session-bar label { font-size: 11px; color: #666; }
+  .session-bar .field { display: flex; align-items: center; gap: 6px; }
+
+  /* Photo area */
+  #photo-area {
+    flex: 1; position: relative; overflow: hidden;
+    background: #000;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #photo-wrap {
+    position: relative; width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #photo {
+    max-width: 100%; max-height: 100%; display: block;
+    pointer-events: none;
+    -webkit-user-drag: none;
+  }
+  #overlay {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: auto;
+  }
+
+  .marker {
+    position: absolute;
+    width: 36px; height: 36px;
+    margin-left: -18px; margin-top: -18px;
+    background: rgba(217, 119, 6, 0.95);
+    border: 2.5px solid #fff;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,0,0,0.4);
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+  .marker.selected {
+    background: #fbbf24;
+    transform: scale(1.15);
+    z-index: 10;
+  }
+  .marker:active { transform: scale(0.95); }
+
+  #empty-state {
+    color: #555; font-size: 16px; text-align: center; padding: 40px;
+    line-height: 1.6;
+  }
+  #empty-state strong { color: #888; }
+
+  /* Bottom panel */
+  #bottom {
+    background: #1a1a1a;
+    border-top: 1px solid #2a2a2a;
+    flex-shrink: 0;
+    max-height: 40vh; overflow-y: auto;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  #marker-list { padding: 8px 12px; }
+  #marker-list .empty {
+    color: #555; font-size: 13px; padding: 12px; text-align: center;
+  }
+  .marker-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 8px; border-radius: 8px; cursor: pointer;
+  }
+  .marker-item.selected { background: #2a2a2a; }
+  .marker-item .num {
+    flex-shrink: 0;
+    width: 28px; height: 28px;
+    background: #d97706; color: #fff;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+  }
+  .marker-item .label {
+    flex: 1; font-size: 14px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .marker-item .label.placeholder { color: #666; font-style: italic; }
+  .marker-item .coords { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
+  .marker-item .delete-btn {
+    background: transparent; color: #888; border: none;
+    font-size: 18px; padding: 4px 10px; cursor: pointer;
+    min-height: 32px;
+  }
+  .marker-item .delete-btn:active { color: #ef4444; }
+
+  #editor {
+    padding: 12px;
+    border-top: 1px solid #2a2a2a;
+    display: none;
+  }
+  #editor.active { display: block; }
+  #editor .title {
+    font-size: 12px; color: #888; margin-bottom: 6px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  #editor .pose {
+    font-size: 10px; color: #555; margin-top: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  #label-input {
+    width: 100%;
+    background: #0a0a0a; color: #e8e8e8;
+    border: 1px solid #3a3a3a; border-radius: 8px;
+    padding: 12px;
+    font-size: 16px;
+    font-family: inherit;
+    resize: vertical; min-height: 60px;
+  }
+  #label-input:focus { outline: none; border-color: #d97706; }
+
+  /* Modal */
+  #modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85); z-index: 1000;
+    align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  #modal.active { display: flex; }
+  #modal .content {
+    background: #1a1a1a; border-radius: 12px;
+    padding: 20px;
+    max-width: 500px; width: 100%;
+    max-height: 80vh; overflow-y: auto;
+  }
+  #modal h2 { font-size: 18px; margin-bottom: 12px; }
+  #modal pre {
+    background: #0a0a0a; padding: 12px; border-radius: 6px;
+    font-size: 11px; overflow-x: auto;
+    color: #aaa; white-space: pre-wrap; word-break: break-all;
+    max-height: 50vh;
+  }
+  #modal .actions {
+    display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;
+  }
+  #modal button {
+    background: #2a2a2a; color: #e8e8e8; border: none;
+    padding: 10px 16px; border-radius: 8px;
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    min-height: 40px;
+  }
+  #modal button.primary { background: #d97706; }
+
+  #toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+    background: rgba(40,40,40,0.95); color: #fff;
+    padding: 10px 18px; border-radius: 20px;
+    font-size: 13px; opacity: 0; transition: opacity 0.2s;
+    pointer-events: none; z-index: 2000;
+    backdrop-filter: blur(8px);
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Permission gate -->
+  <div id="perm-overlay">
+    <h1>センサーの有効化</h1>
+    <p>このアプリは野外の遠隔点地理参照のため、以下のセンサーを使用します:</p>
+    <ul>
+      <li>位置情報 (GPS): 緯度・経度・標高</li>
+      <li>端末姿勢 (ジャイロ・加速度): 方位・仰角・ロール</li>
+    </ul>
+    <p style="font-size:12px;color:#666">許可しない場合はEXIFのみで動作します.</p>
+    <button id="perm-grant">センサーを許可</button>
+    <button id="perm-skip" class="skip">許可せずに使用</button>
+  </div>
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <label for="file-input">📷 撮影</label>
+    <input type="file" id="file-input" accept="image/*" capture="environment">
+    <label for="file-input-gallery">🖼 選択</label>
+    <input type="file" id="file-input-gallery" accept="image/*">
+    <button id="export-btn" disabled>💾 出力</button>
+    <button id="meta-btn" disabled>ℹ️ 詳細</button>
+    <span id="photo-info">写真を選択してください</span>
+  </div>
+
+  <!-- Sensor status -->
+  <div id="sensor-bar">
+    <div class="sensor" id="sensor-gps">
+      <span class="dot"></span>
+      <span class="label">GPS</span>
+      <span class="value" id="gps-value">—</span>
+    </div>
+    <div class="sensor" id="sensor-heading">
+      <span class="dot"></span>
+      <span class="label">方位</span>
+      <span class="value" id="heading-value">—</span>
+    </div>
+    <div class="sensor" id="sensor-pitch">
+      <span class="dot"></span>
+      <span class="label">仰角</span>
+      <span class="value" id="pitch-value">—</span>
+    </div>
+    <div class="sensor" id="sensor-roll">
+      <span class="dot"></span>
+      <span class="label">ロール</span>
+      <span class="value" id="roll-value">—</span>
+    </div>
+  </div>
+
+  <!-- Session bar -->
+  <div class="session-bar">
+    <div class="field">
+      <label>現場:</label>
+      <input id="site-input" placeholder="例: 道志村" />
+    </div>
+    <div class="field">
+      <label>観察者:</label>
+      <input id="observer-input" placeholder="例: たい" />
+    </div>
+  </div>
+
+  <!-- Photo area -->
+  <div id="photo-area">
+    <div id="empty-state">
+      <strong>写真をタップで追加</strong><br>
+      写真を読み込んだ後, 画像上をタップして<br>
+      観察ポイントにマーカーを追加します.
+    </div>
+    <div id="photo-wrap" style="display:none">
+      <img id="photo" alt="">
+      <div id="overlay"></div>
+    </div>
+  </div>
+
+  <!-- Bottom panel -->
+  <div id="bottom">
+    <div id="marker-list">
+      <div class="empty">マーカーがありません</div>
+    </div>
+    <div id="editor">
+      <div class="title">ラベル <span id="editor-num"></span></div>
+      <textarea id="label-input" placeholder="観察内容を入力 (例: クマザサ群落)"></textarea>
+      <div class="pose" id="editor-pose"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal -->
+<div id="modal">
+  <div class="content">
+    <h2 id="modal-title">出力</h2>
+    <pre id="modal-body"></pre>
+    <div class="actions">
+      <button class="primary" id="modal-download">⬇ JSON保存</button>
+      <button id="modal-copy">📋 コピー</button>
+      <button id="modal-close">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// =========================================================
+// 状態
+// =========================================================
+const state = {
+  photo: null,                  // { dataUrl, name, width, height }
+  exif: null,
+  capturedSensors: null,        // 写真読み込み時にスナップショットしたセンサー値
+  markers: [],                  // [{id, u, v, label, capturedSensors}]
+  selectedId: null,
+  nextId: 1,
+  liveSensors: {
+    gps: null,                  // { lat, lon, alt, accuracyH, accuracyV, ts }
+    orientation: null,          // { alpha, beta, gamma, compassHeading, ts }
+    motion: null,               // { gravity, ts }
+  },
+  permissions: {
+    geolocation: 'unknown',     // unknown | granted | denied
+    orientation: 'unknown',
+  },
+};
+
+const STORAGE_KEY = 'photo_annotator_v2';
+
+// =========================================================
+// DOM
+// =========================================================
+const $ = id => document.getElementById(id);
+const fileInput = $('file-input');
+const exportBtn = $('export-btn');
+const metaBtn = $('meta-btn');
+const photoInfo = $('photo-info');
+const emptyState = $('empty-state');
+const photoWrap = $('photo-wrap');
+const photoImg = $('photo');
+const overlay = $('overlay');
+const markerList = $('marker-list');
+const editor = $('editor');
+const editorNum = $('editor-num');
+const editorPose = $('editor-pose');
+const labelInput = $('label-input');
+const modal = $('modal');
+const modalTitle = $('modal-title');
+const modalBody = $('modal-body');
+const siteInput = $('site-input');
+const observerInput = $('observer-input');
+const toastEl = $('toast');
+const permOverlay = $('perm-overlay');
+
+// =========================================================
+// Toast
+// =========================================================
+let toastTimer;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
+}
+
+// =========================================================
+// Sensor: Geolocation (continuous)
+// =========================================================
+let geoWatchId = null;
+
+function startGeolocation() {
+  if (!navigator.geolocation) {
+    setSensorStatus('gps', 'error', 'unavailable');
+    return;
+  }
+  geoWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      state.liveSensors.gps = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+        alt: pos.coords.altitude,
+        accuracyH: pos.coords.accuracy,
+        accuracyV: pos.coords.altitudeAccuracy,
+        heading: pos.coords.heading,
+        speed: pos.coords.speed,
+        ts: pos.timestamp,
+      };
+      state.permissions.geolocation = 'granted';
+      updateSensorDisplay();
+    },
+    (err) => {
+      state.permissions.geolocation = err.code === 1 ? 'denied' : 'error';
+      setSensorStatus('gps', 'error', err.message.slice(0, 20));
+    },
+    { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 }
+  );
+}
+
+// =========================================================
+// Sensor: DeviceOrientation
+// =========================================================
+function startOrientation() {
+  const handler = (ev) => {
+    state.liveSensors.orientation = {
+      alpha: ev.alpha,                   // Z軸 (0=北, 時計回り) ※絶対座標系での方位 (iOSの非標準)
+      beta: ev.beta,                     // X軸 (前後傾き). 端末を立てると90.
+      gamma: ev.gamma,                   // Y軸 (左右傾き).
+      compassHeading: ev.webkitCompassHeading != null ? ev.webkitCompassHeading : null,
+      compassAccuracy: ev.webkitCompassAccuracy != null ? ev.webkitCompassAccuracy : null,
+      absolute: ev.absolute,
+      ts: Date.now(),
+    };
+    state.permissions.orientation = 'granted';
+    updateSensorDisplay();
+  };
+  // iOSは絶対方位の場合 deviceorientationabsolute ではなく deviceorientation でcompassHeading が来る
+  window.addEventListener('deviceorientation', handler, true);
+  // 一部の環境向け
+  window.addEventListener('deviceorientationabsolute', handler, true);
+}
+
+// =========================================================
+// Sensor: DeviceMotion (gravity vector)
+// =========================================================
+function startMotion() {
+  window.addEventListener('devicemotion', (ev) => {
+    const grav = ev.accelerationIncludingGravity;
+    const acc = ev.acceleration;
+    state.liveSensors.motion = {
+      gravity: grav ? { x: grav.x, y: grav.y, z: grav.z } : null,
+      acceleration: acc ? { x: acc.x, y: acc.y, z: acc.z } : null,
+      rotationRate: ev.rotationRate
+        ? { alpha: ev.rotationRate.alpha, beta: ev.rotationRate.beta, gamma: ev.rotationRate.gamma }
+        : null,
+      interval: ev.interval,
+      ts: Date.now(),
+    };
+  }, true);
+}
+
+// =========================================================
+// Permission request (iOS 13+)
+// =========================================================
+async function requestPermissions() {
+  // iOS DeviceOrientation
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res === 'granted') {
+        startOrientation();
+      } else {
+        state.permissions.orientation = 'denied';
+        setSensorStatus('heading', 'error', 'denied');
+        setSensorStatus('pitch', 'error', 'denied');
+        setSensorStatus('roll', 'error', 'denied');
+      }
+    } catch (e) {
+      console.warn('orientation perm error', e);
+    }
+  } else {
+    // Android / 古いiOS / デスクトップ
+    startOrientation();
+  }
+
+  // iOS DeviceMotion
+  if (typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function') {
+    try {
+      const res = await DeviceMotionEvent.requestPermission();
+      if (res === 'granted') startMotion();
+    } catch (e) {
+      console.warn('motion perm error', e);
+    }
+  } else {
+    startMotion();
+  }
+
+  // Geolocation
+  startGeolocation();
+}
+
+// =========================================================
+// Sensor display
+// =========================================================
+function setSensorStatus(id, state_, valueText) {
+  const el = $('sensor-' + id);
+  if (!el) return;
+  el.classList.remove('live', 'error');
+  if (state_ === 'live') el.classList.add('live');
+  if (state_ === 'error') el.classList.add('error');
+  const v = $(id + '-value');
+  if (v && valueText != null) v.textContent = valueText;
+}
+
+function updateSensorDisplay() {
+  // GPS
+  if (state.liveSensors.gps) {
+    const g = state.liveSensors.gps;
+    setSensorStatus('gps', 'live',
+      `${g.lat.toFixed(5)}, ${g.lon.toFixed(5)} ±${Math.round(g.accuracyH)}m`);
+  }
+  // Orientation
+  const o = state.liveSensors.orientation;
+  if (o) {
+    const heading = o.compassHeading != null ? o.compassHeading
+                  : (o.alpha != null ? (360 - o.alpha) % 360 : null);
+    if (heading != null) {
+      setSensorStatus('heading', 'live', `${heading.toFixed(1)}°`);
+    }
+    // 仰角の計算: 端末が立っているとき beta=90, 水平に倒すと beta=0
+    // カメラを地面に対する仰角として解釈するなら:
+    //   写真撮影時の標準は端末を縦持ちで beta ≈ 90 (光軸水平)
+    //   見上げると beta < 90 になる
+    //   よって仰角 = beta - 90 (上向き正にしたいので)
+    // ただし横持ちもあり, gammaも考慮した正確計算は重力ベクトルから.
+    if (o.beta != null) {
+      const pitch = o.beta - 90; // 縦持ち想定 (簡易)
+      setSensorStatus('pitch', 'live', `${pitch.toFixed(1)}°`);
+    }
+    if (o.gamma != null) {
+      setSensorStatus('roll', 'live', `${o.gamma.toFixed(1)}°`);
+    }
+  }
+}
+
+// =========================================================
+// Sensor snapshot
+// =========================================================
+function snapshotSensors() {
+  // 撮影/写真選択時点のセンサー値のスナップショット
+  return {
+    captured_at: new Date().toISOString(),
+    gps: state.liveSensors.gps ? { ...state.liveSensors.gps } : null,
+    orientation: state.liveSensors.orientation ? { ...state.liveSensors.orientation } : null,
+    motion: state.liveSensors.motion ? {
+      gravity: state.liveSensors.motion.gravity ? { ...state.liveSensors.motion.gravity } : null,
+      acceleration: state.liveSensors.motion.acceleration ? { ...state.liveSensors.motion.acceleration } : null,
+      rotation_rate: state.liveSensors.motion.rotationRate ? { ...state.liveSensors.motion.rotationRate } : null,
+      interval: state.liveSensors.motion.interval,
+    } : null,
+    // 計算済み派生値
+    derived: deriveOrientation(),
+  };
+}
+
+function deriveOrientation() {
+  // 重力ベクトルから真の仰角・ロールを計算 (端末の持ち方に依存しない)
+  // iPad 縦持ちで光軸水平のとき, 重力 = (0, -9.8, 0) (おおよそ)
+  // 重力ベクトル g = (gx, gy, gz) から
+  //   pitch (光軸の仰角) = atan2(-gz, -gy)  (近似)
+  //   roll = atan2(gx, -gy)
+  const m = state.liveSensors.motion;
+  if (!m || !m.gravity) return null;
+  const { x: gx, y: gy, z: gz } = m.gravity;
+  // 注: iOS Safari の accelerationIncludingGravity は m/s^2, 符号系の解釈は端末向き依存
+  // ここでは値をそのまま記録し, 解析側で詳細処理する前提
+  const gMag = Math.sqrt(gx*gx + gy*gy + gz*gz);
+  return {
+    g_magnitude: gMag,
+    // 簡易: 光軸が +Z (画面表面の法線方向ではなく、カメラの向き=端末背面)
+    // 標準座標系での想定 (要検証):
+    //   端末水平 (画面真上) のとき g ≈ (0, 0, -9.8)
+    //   端末縦持ちカメラ水平のとき g ≈ (0, -9.8, 0)
+    //   仰角 = カメラ光軸 (-Z軸方向) と水平面のなす角
+    // = atan2(-gy, sqrt(gx^2 + gz^2)) - 90°?
+    // 厳密には解析側で計算するので, ここでは生値+メモのみ
+    note: 'Use gravity vector + EXIF orientation for accurate pitch/roll calculation on analysis side',
+  };
+}
+
+// =========================================================
+// Persistence
+// =========================================================
+function saveState() {
+  try {
+    const data = {
+      photo: state.photo ? {
+        dataUrl: state.photo.dataUrl,
+        name: state.photo.name,
+        width: state.photo.width,
+        height: state.photo.height,
+        originalWidth: state.photo.originalWidth,
+        originalHeight: state.photo.originalHeight,
+        sizeBytes: state.photo.sizeBytes,
+        sourceType: state.photo.sourceType,
+      } : null,
+      exif: state.exif,
+      capturedSensors: state.capturedSensors,
+      markers: state.markers,
+      nextId: state.nextId,
+      site: siteInput.value,
+      observer: observerInput.value,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    return true;
+  } catch (e) {
+    console.warn('saveState failed', e);
+    return false;
+  }
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.site) siteInput.value = data.site;
+    if (data.observer) observerInput.value = data.observer;
+    if (data.photo) {
+      state.photo = data.photo;
+      state.exif = data.exif;
+      state.capturedSensors = data.capturedSensors;
+      state.markers = data.markers || [];
+      state.nextId = data.nextId || (state.markers.length + 1);
+      photoImg.src = state.photo.dataUrl;
+      photoImg.onload = () => { showPhoto(); renderMarkers(); };
+    }
+  } catch (e) { console.warn('loadState failed', e); }
+}
+
+// =========================================================
+// Photo load + EXIF
+// =========================================================
+fileInput.addEventListener('change', (e) => handleFileSelected(e.target.files[0], 'capture'));
+$('file-input-gallery').addEventListener('change', (e) => handleFileSelected(e.target.files[0], 'gallery'));
+
+// 保存・表示用の最大寸法 (これ以上はリサイズ. EXIFは元から抽出するので問題ない)
+const MAX_DIMENSION = 2400;
+
+async function handleFileSelected(file, source) {
+  if (!file) {
+    toast('ファイルが取得できませんでした');
+    return;
+  }
+  toast(`読み込み中... (${(file.size/1024/1024).toFixed(1)}MB)`);
+  try {
+    // 1. EXIFは必ず元のファイルから抽出 (リサイズ前)
+    let exif = null;
+    try {
+      exif = await parseExif(file);
+    } catch (e) {
+      console.warn('EXIF parse failed', e);
+    }
+
+    // 2. 画像を読み込み, 必要ならリサイズしてdataURL化
+    const result = await loadAndResize(file);
+
+    // 3. 状態を更新
+    state.photo = {
+      dataUrl: result.dataUrl,
+      name: file.name || `photo_${Date.now()}.jpg`,
+      width: result.displayWidth,    // リサイズ後のサイズ (表示用)
+      height: result.displayHeight,
+      originalWidth: result.originalWidth,  // 元の解像度 (EXIF照合用)
+      originalHeight: result.originalHeight,
+      sizeBytes: file.size,
+      sourceType: source,            // 'capture' or 'gallery'
+    };
+    state.exif = exif;
+    state.capturedSensors = snapshotSensors();
+    state.markers = [];
+    state.nextId = 1;
+    state.selectedId = null;
+
+    photoImg.src = result.dataUrl;
+    photoImg.onload = () => {
+      showPhoto();
+      renderMarkers();
+      const saved = saveState();
+      if (saved) {
+        toast(`OK: ${result.originalWidth}×${result.originalHeight} → ${result.displayWidth}×${result.displayHeight}`);
+      } else {
+        toast('注意: ストレージ容量超過(セッション中は使えます)');
+      }
+    };
+    photoImg.onerror = () => toast('画像表示エラー: HEICの可能性. iPad設定>カメラ>フォーマット>互換性優先 を試してください');
+  } catch (err) {
+    toast('読み込み失敗: ' + (err.message || err));
+    console.error(err);
+  }
+}
+
+// 元画像を読んで, 必要ならリサイズしたdataURLを返す
+async function loadAndResize(file) {
+  // Blob URLで読み込む方が大きい画像でメモリ効率が良い
+  const blobUrl = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(blobUrl);
+    const ow = img.naturalWidth;
+    const oh = img.naturalHeight;
+    if (!ow || !oh) throw new Error('画像サイズ取得失敗(HEICの可能性)');
+
+    let w = ow, h = oh;
+    const maxDim = Math.max(ow, oh);
+    if (maxDim > MAX_DIMENSION) {
+      const scale = MAX_DIMENSION / maxDim;
+      w = Math.round(ow * scale);
+      h = Math.round(oh * scale);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+
+    // JPEG品質0.85で出力. メモリ・容量効率と画質のバランス
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+    return {
+      dataUrl,
+      originalWidth: ow, originalHeight: oh,
+      displayWidth: w, displayHeight: h,
+    };
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
+}
+
+function loadImage(src) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => rej(new Error('画像デコード失敗'));
+    img.src = src;
+  });
+}
+
+function showPhoto() {
+  emptyState.style.display = 'none';
+  photoWrap.style.display = 'flex';
+  exportBtn.disabled = false;
+  metaBtn.disabled = false;
+  photoInfo.textContent = `${state.photo.name} (${state.photo.width}×${state.photo.height})`;
+}
+
+// =========================================================
+// EXIF (前版と同じパーサ, 省略なし)
+// =========================================================
+async function parseExif(file) {
+  try {
+    const buf = await file.arrayBuffer();
+    return extractExif(buf);
+  } catch (e) { return { error: e.message }; }
+}
+
+function extractExif(buffer) {
+  const view = new DataView(buffer);
+  if (view.getUint16(0) !== 0xFFD8) return { error: 'Not JPEG' };
+  let offset = 2;
+  const length = view.byteLength;
+  while (offset < length) {
+    if (view.getUint8(offset) !== 0xFF) return { error: 'Invalid marker' };
+    const marker = view.getUint8(offset + 1);
+    if (marker === 0xE1) {
+      const segLen = view.getUint16(offset + 2);
+      const exifHeader = String.fromCharCode(
+        view.getUint8(offset + 4), view.getUint8(offset + 5),
+        view.getUint8(offset + 6), view.getUint8(offset + 7),
+      );
+      if (exifHeader === 'Exif') return parseTiff(view, offset + 10, segLen - 8);
+      offset += 2 + segLen;
+    } else if ((marker & 0xFFF0) === 0xFFE0) {
+      const segLen = view.getUint16(offset + 2);
+      offset += 2 + segLen;
+    } else break;
+  }
+  return {};
+}
+
+function parseTiff(view, start, len) {
+  const byteOrder = view.getUint16(start);
+  const little = byteOrder === 0x4949;
+  if (!little && byteOrder !== 0x4D4D) return { error: 'Invalid TIFF' };
+  const get16 = (o) => view.getUint16(o, little);
+  const get32 = (o) => view.getUint32(o, little);
+  if (get16(start + 2) !== 0x002A) return { error: 'Invalid TIFF magic' };
+  const ifd0Offset = start + get32(start + 4);
+  const ifd0 = readIfd(view, ifd0Offset, start, little);
+  const result = {};
+
+  if (ifd0.tags[0x010F]) result.make = readString(view, ifd0.tags[0x010F], start, little);
+  if (ifd0.tags[0x0110]) result.model = readString(view, ifd0.tags[0x0110], start, little);
+  if (ifd0.tags[0x0132]) result.dateTime = readString(view, ifd0.tags[0x0132], start, little);
+  if (ifd0.tags[0x0112]) result.orientation = readShort(view, ifd0.tags[0x0112], little);
+
+  if (ifd0.tags[0x8769]) {
+    const exifOffset = start + readLong(view, ifd0.tags[0x8769], little);
+    const exif = readIfd(view, exifOffset, start, little);
+    if (exif.tags[0x920A]) result.focalLength = readRational(view, exif.tags[0x920A], start, little);
+    if (exif.tags[0xA405]) result.focalLengthIn35mm = readShort(view, exif.tags[0xA405], little);
+    if (exif.tags[0xA002]) result.pixelXDimension = readLong(view, exif.tags[0xA002], little);
+    if (exif.tags[0xA003]) result.pixelYDimension = readLong(view, exif.tags[0xA003], little);
+    if (exif.tags[0x9003]) result.dateTimeOriginal = readString(view, exif.tags[0x9003], start, little);
+    if (exif.tags[0xA432]) result.lensSpecification = readRationalArray(view, exif.tags[0xA432], start, little);
+    if (exif.tags[0xA433]) result.lensMake = readString(view, exif.tags[0xA433], start, little);
+    if (exif.tags[0xA434]) result.lensModel = readString(view, exif.tags[0xA434], start, little);
+  }
+
+  if (ifd0.tags[0x8825]) {
+    const gpsOffset = start + readLong(view, ifd0.tags[0x8825], little);
+    const gps = readIfd(view, gpsOffset, start, little);
+    const lat = readGpsCoord(view, gps.tags[0x0002], start, little);
+    const lng = readGpsCoord(view, gps.tags[0x0004], start, little);
+    if (lat != null) {
+      const latRef = readString(view, gps.tags[0x0001], start, little);
+      result.gpsLatitude = (latRef === 'S' ? -1 : 1) * lat;
+    }
+    if (lng != null) {
+      const lngRef = readString(view, gps.tags[0x0003], start, little);
+      result.gpsLongitude = (lngRef === 'W' ? -1 : 1) * lng;
+    }
+    if (gps.tags[0x0006]) {
+      const alt = readRational(view, gps.tags[0x0006], start, little);
+      const altRef = gps.tags[0x0005] ? readByte(view, gps.tags[0x0005]) : 0;
+      result.gpsAltitude = (altRef === 1 ? -1 : 1) * alt;
+    }
+    if (gps.tags[0x0011]) {
+      result.gpsImgDirection = readRational(view, gps.tags[0x0011], start, little);
+      result.gpsImgDirectionRef = gps.tags[0x0010] ? readString(view, gps.tags[0x0010], start, little) : null;
+    }
+    if (gps.tags[0x0007]) {
+      // GPSTimeStamp (3 rationals: hour, min, sec)
+      result.gpsTimeStamp = readRationalArray(view, gps.tags[0x0007], start, little);
+    }
+    if (gps.tags[0x001D]) result.gpsDateStamp = readString(view, gps.tags[0x001D], start, little);
+    if (gps.tags[0x0017]) {
+      // GPSDestBearing は無いが GPSImgDirection の隣に来る場合, GPSDestBearingRef を確認
+    }
+    if (gps.tags[0x000C]) {
+      // GPSSpeedRef
+      result.gpsSpeedRef = readString(view, gps.tags[0x000C], start, little);
+    }
+    if (gps.tags[0x000D]) result.gpsSpeed = readRational(view, gps.tags[0x000D], start, little);
+    if (gps.tags[0x000E]) result.gpsTrackRef = readString(view, gps.tags[0x000E], start, little);
+    if (gps.tags[0x000F]) result.gpsTrack = readRational(view, gps.tags[0x000F], start, little);
+  }
+  return result;
+}
+
+function readIfd(view, ifdOffset, tiffStart, little) {
+  const get16 = (o) => view.getUint16(o, little);
+  const numEntries = get16(ifdOffset);
+  const tags = {};
+  for (let i = 0; i < numEntries; i++) {
+    const entryOffset = ifdOffset + 2 + i * 12;
+    tags[get16(entryOffset)] = entryOffset;
+  }
+  return { tags };
+}
+
+function readString(view, entryOffset, tiffStart, little) {
+  const count = view.getUint32(entryOffset + 4, little);
+  let dataOffset;
+  if (count <= 4) dataOffset = entryOffset + 8;
+  else dataOffset = tiffStart + view.getUint32(entryOffset + 8, little);
+  let s = '';
+  for (let i = 0; i < count; i++) {
+    const c = view.getUint8(dataOffset + i);
+    if (c === 0) break;
+    s += String.fromCharCode(c);
+  }
+  return s;
+}
+
+function readShort(view, entryOffset, little) { return view.getUint16(entryOffset + 8, little); }
+function readLong(view, entryOffset, little) { return view.getUint32(entryOffset + 8, little); }
+function readByte(view, entryOffset) { return view.getUint8(entryOffset + 8); }
+
+function readRational(view, entryOffset, tiffStart, little) {
+  const dataOffset = tiffStart + view.getUint32(entryOffset + 8, little);
+  const num = view.getUint32(dataOffset, little);
+  const den = view.getUint32(dataOffset + 4, little);
+  return den === 0 ? 0 : num / den;
+}
+
+function readRationalArray(view, entryOffset, tiffStart, little) {
+  const count = view.getUint32(entryOffset + 4, little);
+  const dataOffset = tiffStart + view.getUint32(entryOffset + 8, little);
+  const arr = [];
+  for (let i = 0; i < count; i++) {
+    const num = view.getUint32(dataOffset + i * 8, little);
+    const den = view.getUint32(dataOffset + i * 8 + 4, little);
+    arr.push(den === 0 ? 0 : num / den);
+  }
+  return arr;
+}
+
+function readGpsCoord(view, entryOffset, tiffStart, little) {
+  if (!entryOffset) return null;
+  const dataOffset = tiffStart + view.getUint32(entryOffset + 8, little);
+  const deg = view.getUint32(dataOffset, little) / view.getUint32(dataOffset + 4, little);
+  const min = view.getUint32(dataOffset + 8, little) / view.getUint32(dataOffset + 12, little);
+  const sec = view.getUint32(dataOffset + 16, little) / view.getUint32(dataOffset + 20, little);
+  return deg + min / 60 + sec / 3600;
+}
+
+// =========================================================
+// Markers
+// =========================================================
+overlay.addEventListener('click', (e) => {
+  if (e.target !== overlay) return;
+  if (!state.photo) return;
+  const imgRect = photoImg.getBoundingClientRect();
+  const x = e.clientX - imgRect.left;
+  const y = e.clientY - imgRect.top;
+  if (x < 0 || y < 0 || x > imgRect.width || y > imgRect.height) return;
+  const u = x / imgRect.width;
+  const v = y / imgRect.height;
+
+  const marker = {
+    id: state.nextId++,
+    u, v,
+    label: '',
+    capturedSensors: snapshotSensors(), // ← マーカー追加時のセンサースナップショット
+  };
+  state.markers.push(marker);
+  state.selectedId = marker.id;
+  renderMarkers();
+  renderList();
+  showEditor(marker);
+  saveState();
+});
+
+function renderMarkers() {
+  overlay.innerHTML = '';
+  if (!state.photo) return;
+  const imgRect = photoImg.getBoundingClientRect();
+  const overlayRect = overlay.getBoundingClientRect();
+  const offsetX = imgRect.left - overlayRect.left;
+  const offsetY = imgRect.top - overlayRect.top;
+  state.markers.forEach((m, idx) => {
+    const el = document.createElement('div');
+    el.className = 'marker' + (m.id === state.selectedId ? ' selected' : '');
+    el.style.left = (offsetX + m.u * imgRect.width) + 'px';
+    el.style.top = (offsetY + m.v * imgRect.height) + 'px';
+    el.textContent = idx + 1;
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectMarker(m.id);
+    });
+    overlay.appendChild(el);
+  });
+}
+
+function selectMarker(id) {
+  state.selectedId = id;
+  const m = state.markers.find(x => x.id === id);
+  renderMarkers();
+  renderList();
+  if (m) showEditor(m);
+}
+
+function showEditor(marker) {
+  editor.classList.add('active');
+  const idx = state.markers.findIndex(x => x.id === marker.id);
+  editorNum.textContent = `#${idx + 1}`;
+  labelInput.value = marker.label || '';
+  // ポーズ情報を表示
+  if (marker.capturedSensors) {
+    const s = marker.capturedSensors;
+    const parts = [];
+    if (s.gps) parts.push(`GPS ${s.gps.lat.toFixed(5)},${s.gps.lon.toFixed(5)}±${Math.round(s.gps.accuracyH)}m`);
+    if (s.orientation) {
+      const h = s.orientation.compassHeading != null ? s.orientation.compassHeading
+              : (s.orientation.alpha != null ? (360 - s.orientation.alpha) % 360 : null);
+      if (h != null) parts.push(`方位${h.toFixed(1)}°`);
+      if (s.orientation.beta != null) parts.push(`仰角${(s.orientation.beta - 90).toFixed(1)}°`);
+      if (s.orientation.gamma != null) parts.push(`ロール${s.orientation.gamma.toFixed(1)}°`);
+    }
+    editorPose.textContent = parts.join('  ');
+  } else {
+    editorPose.textContent = '';
+  }
+  setTimeout(() => labelInput.focus(), 100);
+}
+
+labelInput.addEventListener('input', () => {
+  const m = state.markers.find(x => x.id === state.selectedId);
+  if (m) { m.label = labelInput.value; renderList(); saveState(); }
+});
+
+function renderList() {
+  if (state.markers.length === 0) {
+    markerList.innerHTML = '<div class="empty">マーカーがありません</div>';
+    return;
+  }
+  markerList.innerHTML = '';
+  state.markers.forEach((m, idx) => {
+    const item = document.createElement('div');
+    item.className = 'marker-item' + (m.id === state.selectedId ? ' selected' : '');
+    const num = document.createElement('div');
+    num.className = 'num'; num.textContent = idx + 1;
+    item.appendChild(num);
+    const label = document.createElement('div');
+    label.className = 'label' + (m.label ? '' : ' placeholder');
+    label.textContent = m.label || '(ラベル未入力)';
+    item.appendChild(label);
+    const coords = document.createElement('div');
+    coords.className = 'coords';
+    if (state.photo) {
+      coords.textContent = `${Math.round(m.u * state.photo.width)},${Math.round(m.v * state.photo.height)}`;
+    }
+    item.appendChild(coords);
+    const del = document.createElement('button');
+    del.className = 'delete-btn'; del.textContent = '✕';
+    del.addEventListener('click', (e) => { e.stopPropagation(); deleteMarker(m.id); });
+    item.appendChild(del);
+    item.addEventListener('click', () => selectMarker(m.id));
+    markerList.appendChild(item);
+  });
+}
+
+function deleteMarker(id) {
+  if (!confirm('このマーカーを削除しますか?')) return;
+  state.markers = state.markers.filter(m => m.id !== id);
+  if (state.selectedId === id) {
+    editor.classList.remove('active');
+    state.selectedId = null;
+  }
+  renderMarkers(); renderList(); saveState();
+}
+
+// =========================================================
+// Export
+// =========================================================
+exportBtn.addEventListener('click', () => {
+  const data = buildExportData();
+  modalTitle.textContent = '出力 (JSON)';
+  modalBody.textContent = JSON.stringify(data, null, 2);
+  modal.classList.add('active');
+  modal.dataset.mode = 'export';
+});
+
+metaBtn.addEventListener('click', () => {
+  modalTitle.textContent = 'メタデータ詳細';
+  modalBody.textContent = JSON.stringify({
+    exif: state.exif,
+    captured_sensors_at_photo_load: state.capturedSensors,
+    permissions: state.permissions,
+  }, null, 2);
+  modal.classList.add('active');
+  modal.dataset.mode = 'meta';
+});
+
+function buildExportData() {
+  return {
+    schema_version: '2.0',
+    exported_at: new Date().toISOString(),
+    site: siteInput.value || null,
+    observer: observerInput.value || null,
+    photo: state.photo ? {
+      filename: state.photo.name,
+      width: state.photo.width,
+      height: state.photo.height,
+    } : null,
+    exif: state.exif || null,
+    sensors_at_photo_load: state.capturedSensors || null,
+    permissions: state.permissions,
+    markers: state.markers.map((m, idx) => ({
+      index: idx + 1,
+      id: m.id,
+      u_normalized: m.u,
+      v_normalized: m.v,
+      u_pixel: state.photo ? Math.round(m.u * state.photo.width) : null,
+      v_pixel: state.photo ? Math.round(m.v * state.photo.height) : null,
+      label: m.label || null,
+      sensors_at_marker: m.capturedSensors || null,
+    })),
+  };
+}
+
+$('modal-download').addEventListener('click', () => {
+  const mode = modal.dataset.mode;
+  const data = mode === 'export' ? buildExportData() : {
+    exif: state.exif,
+    captured_sensors_at_photo_load: state.capturedSensors,
+    permissions: state.permissions,
+  };
+  const base = state.photo ? state.photo.name.replace(/\.[^.]+$/, '') : 'annotations';
+  const suffix = mode === 'export' ? '.annotations.json' : '.meta.json';
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = base + suffix;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('JSONを保存しました');
+});
+
+$('modal-copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(modalBody.textContent); toast('コピー完了'); }
+  catch (e) { toast('コピー失敗 (HTTPSのみ)'); }
+});
+
+$('modal-close').addEventListener('click', () => modal.classList.remove('active'));
+modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
+
+// =========================================================
+// Permission overlay buttons
+// =========================================================
+$('perm-grant').addEventListener('click', async () => {
+  permOverlay.classList.remove('active');
+  await requestPermissions();
+});
+$('perm-skip').addEventListener('click', () => {
+  permOverlay.classList.remove('active');
+  // 許可なしでも geolocation は別permission, 試みる
+  startGeolocation();
+});
+
+// =========================================================
+// Session
+// =========================================================
+siteInput.addEventListener('input', saveState);
+observerInput.addEventListener('input', saveState);
+
+// =========================================================
+// Resize
+// =========================================================
+window.addEventListener('resize', () => renderMarkers());
+window.addEventListener('orientationchange', () => setTimeout(renderMarkers, 200));
+
+// =========================================================
+// Init
+// =========================================================
+loadState();
+renderList();
+
+// iOSの場合は明示的にユーザージェスチャ後にpermission要求が必要
+// → permOverlayを表示
+const needsExplicitPerm = (
+  (typeof DeviceOrientationEvent !== 'undefined' &&
+   typeof DeviceOrientationEvent.requestPermission === 'function')
+);
+if (needsExplicitPerm) {
+  permOverlay.classList.add('active');
+} else {
+  // Android/デスクトップなど自動許可可能環境
+  requestPermissions();
+}
+
+// ダブルタップズーム抑止
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 300) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+
+</script>
+</body>
+</html>
